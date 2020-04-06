@@ -99,7 +99,7 @@ class Attention(nn.Module):
         # if self.q: query = self.q(query)
         if self.q:
             query = self.q(query)
-            query = self.qln(query.float())
+            query = self.qln(query.to(next(self.parameters()).dtype))
         if self.k:
             key = self.k(key)
         if self.v:
@@ -202,7 +202,7 @@ class Block(nn.Module):
             x = self.drop(z).sum(dim=-2)
             # x = x + z.sum(dim=-2)
 
-            h = h + x if self.residual else x.float()
+            h = h + x if self.residual else x.to(h.dtype)
 
         focus, new_mem = None, []
         if self.attn is not None:
