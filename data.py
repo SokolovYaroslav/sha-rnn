@@ -1,7 +1,7 @@
 import os
-import torch
-
 from collections import Counter
+
+import torch
 
 
 class Dictionary(object):
@@ -27,18 +27,18 @@ class Dictionary(object):
 class Corpus(object):
     def __init__(self, path):
         self.dictionary = Dictionary()
-        self.train = self.tokenize(os.path.join(path, 'train.txt'), construct_dictionary=True)
-        self.valid = self.tokenize(os.path.join(path, 'valid.txt'))
-        self.test = self.tokenize(os.path.join(path, 'test.txt'))
+        self.train = self.tokenize(os.path.join(path, "train.txt"), construct_dictionary=True)
+        self.valid = self.tokenize(os.path.join(path, "valid.txt"))
+        self.test = self.tokenize(os.path.join(path, "test.txt"))
 
     def tokenize(self, path, construct_dictionary=False):
         """Tokenizes a text file."""
         assert os.path.exists(path)
         # Add words to the dictionary
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             tokens = 0
             for line in f:
-                words = line.split() + ['<eos>']
+                words = line.split() + ["<eos>"]
                 tokens += len(words)
                 if construct_dictionary:
                     for word in words:
@@ -51,11 +51,11 @@ class Corpus(object):
             self.dictionary = d
 
         # Tokenize file content
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             ids = torch.LongTensor(tokens)
             token = 0
             for line in f:
-                words = line.split() + ['<eos>']
+                words = line.split() + ["<eos>"]
                 for word in words:
                     ids[token] = self.dictionary.word2idx[word]
                     token += 1
