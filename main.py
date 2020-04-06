@@ -5,6 +5,7 @@ import time
 
 import numpy as np
 import torch
+import wandb
 
 import data
 import model
@@ -72,6 +73,13 @@ if torch.cuda.is_available():
         print("WARNING: You have a CUDA device, so you should probably run with --cuda")
     else:
         torch.cuda.manual_seed(args.seed)
+
+###############################################################################
+# WandB init
+###############################################################################
+
+wandb.init(project="SHA-RNN-git", config=args)
+total_batch = 0
 
 
 ###############################################################################
@@ -201,6 +209,8 @@ total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[
 print("Args:", args)
 print("Model total parameters:", total_params)
 
+wandb.config["params"] = total_params
+
 
 ###############################################################################
 # Training code
@@ -224,7 +234,15 @@ def evaluate(data_source, batch_size=10):
             total_loss += len(data) * criterion(model.decoder.weight, model.decoder.bias, output, targets.view(-1)).data
             if hidden is not None:
                 hidden = repackage_hidden(hidden)
-    return total_loss.item() / len(data_source)
+
+    loss = total_loss.item() / len(data_source)
+    ppl = math.exp(loss)
+    bpc = loss / math.log(2)
+
+    global total_batch
+    wandb.log({"eval/loss": loss, "eval/ppl": ppl, "eval/bpc": bpc}, step=total_batch * args.bptt * args.batch_size)
+
+    return loss
 
 
 def train(epoch=0):
@@ -237,6 +255,7 @@ def train(epoch=0):
     hidden = None
     mems = None
     batch, i = 0, 0
+    global total_batch
     loss_every_n_batches = args.accumulate
     losses = []
     while i < train_data.size(0) - 1 - 1:
@@ -356,6 +375,10 @@ def train(epoch=0):
         if batch % args.log_interval == 0 and batch > 0:
             cur_loss = total_loss.item() / args.log_interval
             elapsed = time.time() - start_time
+            ms_per_batch = elapsed * 1000 / args.log_interval
+            ppl = math.exp(cur_loss)
+            bpc = cur_loss / math.log(2)
+
             print(
                 "| epoch {:3d} | {:5d}/{:5d} batches | lr {:05.5f} | ms/batch {:5.2f} | "
                 "loss {:5.2f} | ppl {:8.2f} | bpc {:8.3f}".format(
@@ -363,12 +386,24 @@ def train(epoch=0):
                     batch,
                     len(train_data) // args.bptt,
                     optimizer.param_groups[0]["lr"],
-                    elapsed * 1000 / args.log_interval,
+                    ms_per_batch,
                     cur_loss,
-                    math.exp(cur_loss),
-                    cur_loss / math.log(2),
+                    ppl,
+                    bpc,
                 )
             )
+            total_batch += batch
+            wandb.log(
+                {
+                    "train/lr": optimizer.param_groups[0]["lr"],
+                    "train/loss": cur_loss,
+                    "train/ppl": ppl,
+                    "train/bpc": bpc,
+                    "times/ms_per_batch": ms_per_batch,
+                },
+                step=total_batch * args.bptt * args.batch_size,
+            )
+
             total_loss = 0
             start_time = time.time()
         ###
