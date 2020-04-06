@@ -6,6 +6,7 @@ import time
 import numpy as np
 import torch
 import wandb
+from transformers import get_cosine_schedule_with_warmup
 
 import data
 import model
@@ -260,15 +261,15 @@ def train(epoch=0):
     losses = []
     while i < train_data.size(0) - 1 - 1:
         # Warmup
-        for param_group in optimizer.param_groups:
-            step = epoch * (len(train_data) // args.bptt) + batch + 1
-            pctwarm = min(step, args.warmup) / args.warmup
-            if args.cooldown:
-                pctcool = max(min(step - args.cooldown, args.cooldown) / args.cooldown, 0)
-            else:
-                pctcool = 0
-            param_group["lr"] = args.lr * (pctwarm - pctcool)
-            # param_group['betas'] = (0.95 - (pctwarm - pctcool) * 0.05, param_group['betas'][1])
+        # for param_group in optimizer.param_groups:
+        #     step = epoch * (len(train_data) // args.bptt) + batch + 1
+        #     pctwarm = min(step, args.warmup) / args.warmup
+        #     if args.cooldown:
+        #         pctcool = max(min(step - args.cooldown, args.cooldown) / args.cooldown, 0)
+        #     else:
+        #         pctcool = 0
+        #     param_group["lr"] = args.lr * (pctwarm - pctcool)
+        #     # param_group['betas'] = (0.95 - (pctwarm - pctcool) * 0.05, param_group['betas'][1])
         if True:
             bptt = args.bptt if np.random.random() < 0.95 else args.bptt / 2.0
             # Prevent excessively small or negative sequence lengths
@@ -348,6 +349,7 @@ def train(epoch=0):
             if args.clip:
                 torch.nn.utils.clip_grad_norm_(params, args.clip)
             optimizer.step()
+            scheduler.step()
             if hidden is not None:
                 # if np.random.random() > 0.975:
                 #    hidden = None
@@ -382,20 +384,13 @@ def train(epoch=0):
             print(
                 "| epoch {:3d} | {:5d}/{:5d} batches | lr {:05.5f} | ms/batch {:5.2f} | "
                 "loss {:5.2f} | ppl {:8.2f} | bpc {:8.3f}".format(
-                    epoch,
-                    batch,
-                    len(train_data) // args.bptt,
-                    optimizer.param_groups[0]["lr"],
-                    ms_per_batch,
-                    cur_loss,
-                    ppl,
-                    bpc,
+                    epoch, batch, len(train_data) // args.bptt, scheduler.get_lr()[0], ms_per_batch, cur_loss, ppl, bpc
                 )
             )
             total_batch += batch
             wandb.log(
                 {
-                    "train/lr": optimizer.param_groups[0]["lr"],
+                    "train/lr": scheduler.get_lr()[0],
                     "train/loss": cur_loss,
                     "train/ppl": ppl,
                     "train/bpc": bpc,
@@ -441,6 +436,10 @@ try:
         k, alpha = 5, 0.8
         print("Lookahead - k {} and alpha {}".format(k, alpha))
         optimizer = Lookahead(base_optimizer=optimizer, k=k, alpha=alpha)
+
+    scheduler = get_cosine_schedule_with_warmup(
+        optimizer, num_warmup_steps=args.warmup, num_training_steps=train_data.size(0) / args.bptt * args.epochs
+    )
 
     from apex import amp
 
